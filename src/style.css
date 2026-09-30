@@ -8,7 +8,8 @@
   --text: #1f2429;
   --text-dim: #6b7280;
   --heading: #374151;
-  --title: #6b7280;
+  --title: #111827;
+  --control-h: 38px;
   --accent: #5b9bd5;
   --accent-hover: #4a8ac4;
   --accent-soft: #e6f0fa;
@@ -83,16 +84,32 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 22px;
+  font-size: 27px;
   font-weight: 700;
+  letter-spacing: 0.01em;
   color: var(--title);
 }
 .banner-right {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   font-size: 13px;
   color: var(--text-dim);
+}
+.banner-right .user-name {
+  color: var(--text);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 名前 | 更新 | ログアウト の区切り線 */
+.banner-right .sep {
+  width: 1px;
+  height: 18px;
+  background: var(--border-strong);
+  margin: 0 12px;
+  flex: 0 0 auto;
 }
 
 /* --- セクション (枠・背景・影は付けず、余白と見出しだけで区切る) --- */
@@ -201,13 +218,25 @@ textarea {
 .field input,
 .field select {
   width: 100%;
+  height: var(--control-h);
   background: var(--input-bg);
   color: var(--text);
   border: 1px solid var(--input-border);
   border-radius: var(--radius-sm);
-  padding: 8px 12px;
+  padding: 0 12px;
   font-size: 14px;
+  line-height: normal;
   outline: none;
+}
+/* ▽ は右端 0.75rem・上下中央に置き、文字と重ならないよう右側に余白を取る */
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px 12px;
 }
 .field input:focus,
 .field select:focus {
@@ -220,17 +249,26 @@ textarea {
 .field input.with-icon {
   padding-left: 36px;
 }
+/* 入力欄内の左アイコン / 右ボタン: 入力欄 (高さ --control-h) の上下中央に揃える */
 .field .prefix-icon {
   position: absolute;
-  left: 10px;
-  bottom: 9px;
+  left: 12px;
+  bottom: 0;
+  height: var(--control-h);
+  display: flex;
+  align-items: center;
   color: var(--text-dim);
   pointer-events: none;
 }
 .field .suffix-btn {
   position: absolute;
-  right: 6px;
-  bottom: 3px;
+  right: 4px;
+  bottom: 0;
+  height: var(--control-h);
+  width: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .field select option {
   background: var(--card-bg);
@@ -247,8 +285,8 @@ button {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 2.25rem;
-  padding: 0 1rem;
+  height: 36px;
+  padding: 0 16px;
   border-radius: var(--pill);
   border: 1px solid transparent;
   color: var(--on-accent);
@@ -299,8 +337,8 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 36px;
+  height: 36px;
   border-radius: var(--pill);
   border: none;
   background: transparent;

@@ -94,7 +94,8 @@ export function createMainView(opts: MainViewOptions): MainView {
 
   const refreshButton = el("button", { class: "icon-btn white", type: "button", title: "フレンド・ワールド情報を更新" }, icon("refresh", 22));
   const logoutButton = el("button", { class: "btn text", type: "button" }, icon("logout", 18), el("span", { text: "ログアウト" })) as HTMLButtonElement;
-  const headerRight = el("div", { class: "banner-right" }, el("span", { text: opts.user.displayName }), refreshButton, logoutButton);
+  const sep = () => el("span", { class: "sep", "aria-hidden": "true" });
+  const headerRight = el("div", { class: "banner-right" }, el("span", { class: "user-name", text: opts.user.displayName }), sep(), refreshButton, sep(), logoutButton);
 
   logoutButton.addEventListener("click", async () => {
     logoutButton.disabled = true;
