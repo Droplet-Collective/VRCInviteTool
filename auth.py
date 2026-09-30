@@ -126,19 +126,28 @@ def _do_login(
         if is_email
         else "認証アプリの2FAコードを入力してください: "
     )
-    for attempt in range(MAX_TWO_FACTOR_ATTEMPTS):
+    # 形式エラー (空入力・誤打) は試行回数を消費しない。API に拒否された場合のみカウントする。
+    # ループはキャンセル (None) または GUI 側のタイムアウトで抜ける。
+    attempts = 0
+    verified = False
+    while attempts < MAX_TWO_FACTOR_ATTEMPTS:
         code = _input(prompt)
         if code is None:
             raise LoginError("ログインをキャンセルしました。")
         code = code.strip()
         if not _TWO_FACTOR_CODE_RE.match(code):
-            print("2FAコードの形式が正しくありません (6桁の数字)。")
+            print("2FAコードの形式が正しくありません (6桁の数字、またはリカバリーコード xxxx-xxxx)。")
             prompt = "2FAコードの形式が正しくありません。もう一度入力してください: "
             continue
         try:
             if is_email:
                 result = auth_api.verify2_fa_email_code(
                     two_factor_email_code=TwoFactorEmailCode(code=code)
+                )
+            elif "-" in code:
+                # リカバリーコードは TOTP とは別エンドポイント
+                result = auth_api.verify_recovery_code(
+                    two_factor_auth_code=TwoFactorAuthCode(code=code)
                 )
             else:
                 result = auth_api.verify2_fa(
@@ -151,9 +160,10 @@ def _do_login(
             verified = False
         if verified:
             break
+        attempts += 1
         print("2FAコードが正しくありません。")
         prompt = "2FAコードが正しくありません。もう一度入力してください: "
-    else:
+    if not verified:
         raise LoginError("2FAコードの確認に失敗しました。ログインをやり直してください。")
 
     try:
@@ -269,10 +279,8 @@ def logout(
     if api_client is not None:
         try:
             authentication_api.AuthenticationApi(api_client).logout()
-        except ApiException:
-            pass
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"サーバ側ログアウトに失敗: {e}")
         api_client.rest_client.cookie_jar.clear()
     if clear_session:
         clear_session()

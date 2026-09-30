@@ -5,6 +5,7 @@ import os
 import sys
 import time
 import queue
+import tempfile
 import threading
 from pathlib import Path
 
@@ -37,14 +38,28 @@ def _load_config() -> dict:
     return {}
 
 
+_config_lock = threading.Lock()
+
+
 def _save_config(data: dict):
-    """一時ファイルに書いてから置き換える (クラッシュ時の破損防止)。"""
+    """一時ファイルに書いてから置き換える (クラッシュ時の破損防止)。
+
+    並行呼び出し (起動時 auto-login と手動ログイン等) に備えてロックで直列化し、
+    一時ファイルは一意名・0o600 で作成する。
+    """
     path = _get_config_path()
-    tmp_path = path.with_name(path.name + ".tmp")
-    tmp_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    if os.name != "nt":
-        os.chmod(tmp_path, 0o600)
-    os.replace(tmp_path, path)
+    with _config_lock:
+        fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(data, ensure_ascii=False))
+            os.replace(tmp_name, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
 
 class GUIOutput:
@@ -220,6 +235,9 @@ class AppState:
         logout(clear_session=self.clear_session)
         self.api_client = None
         self.display_name = ""
+        self.user_id = ""
+        self.friends = []
+        self.favorite_worlds = []
         if self._show_login_fn:
             self._show_login_fn()
         if self._session_expired_message_fn:

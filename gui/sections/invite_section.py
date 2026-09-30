@@ -346,10 +346,21 @@ def setup_invite_handlers(state: AppState, widgets: dict):
                 total = len(targets)
                 state.log_queue.put(f"{total}人に招待を送信します...\n")
                 failed: list = []
+                sent = 0
                 for i, uid in enumerate(targets):
                     fname = selected_friend_names.get(uid, uid)
                     state.log_queue.put(f"[{i+1}/{total}] {fname} に招待中...\n")
-                    if not invite_user(state.api_client, uid, iid):
+                    try:
+                        ok = invite_user(state.api_client, uid, iid)
+                    except UnauthorizedException:
+                        state.log_queue.put(
+                            f"セッションが切れました (送信済み: 成功 {sent} 件 / 失敗 {len(failed)} 件、"
+                            f"未送信 {total - i} 件)。再ログインしてください。\n"
+                        )
+                        raise
+                    if ok:
+                        sent += 1
+                    else:
                         failed.append(uid)
                     if i < total - 1:
                         time.sleep(1)

@@ -8,7 +8,7 @@ from typing import Optional
 import vrchatapi
 from vrchatapi.api import invite_api
 from vrchatapi.models import InviteRequest
-from vrchatapi.exceptions import ApiException
+from vrchatapi.exceptions import ApiException, UnauthorizedException
 
 def invite_myself(
     api_client: vrchatapi.ApiClient,
@@ -84,6 +84,9 @@ def invite_user(
         print(f"  送信先   : {notification.receiver_user_id}")
         print(f"  送信日時 : {notification.created_at}")
         return True
+    except UnauthorizedException:
+        # セッション失効は呼び出し側で再ログイン処理させる
+        raise
     except ApiException as e:
         if e.status == 403:
             print(f"\nエラー: ユーザー {user_id} はフレンドではないため招待できません。")
