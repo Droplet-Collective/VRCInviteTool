@@ -15,7 +15,12 @@ function mount(node: HTMLElement): void {
   app.replaceChildren(node);
 }
 
-function showLogin(message?: { text: string; level: "error" | "warning" | "info" }, autoLogin = false): void {
+async function showLogin(message?: { text: string; level: "error" | "warning" | "info" }, autoLogin = false): Promise<void> {
+  try {
+    savedUsername = (await api.appInfo()).savedUsername ?? "";
+  } catch {
+    /* 前回の値を使う */
+  }
   const view = createLoginView({
     savedUsername,
     message,
@@ -35,11 +40,10 @@ function showLogin(message?: { text: string; level: "error" | "warning" | "info"
 }
 
 function showMain(user: UserSummary): void {
-  savedUsername = savedUsername || "";
   const view = createMainView({
     user,
-    onLogout: () => showLogin(),
-    onSessionExpired: () => showLogin({ text: "セッションが切れました。再度ログインしてください。", level: "warning" }),
+    onLogout: () => void showLogin(),
+    onSessionExpired: () => void showLogin({ text: "セッションが切れました。再度ログインしてください。", level: "warning" }),
   });
   mount(view.root);
   void view.refreshData();
@@ -49,12 +53,11 @@ async function start(): Promise<void> {
   await listen<{ message: string }>("log", (event) => logStore.append(event.payload.message));
   try {
     const info = await api.appInfo();
-    savedUsername = info.savedUsername ?? "";
     logStore.append(`VRCInviteTool v${info.version} (データ保存先: ${info.dataDir})`);
   } catch (e) {
     logStore.append(`アプリ情報の取得に失敗: ${(e as ApiError).message}`);
   }
-  showLogin(undefined, true);
+  await showLogin(undefined, true);
 }
 
 void start();

@@ -132,7 +132,8 @@ export function createMainView(opts: MainViewOptions): MainView {
   async function fetchWorldInfo(id: string): Promise<void> {
     const seq = ++worldFetchSeq;
     id = id.trim();
-    if (!id) {
+    // Python 版と同じく wrld_ で始まらない入力途中の値では何も表示しない
+    if (!id.startsWith("wrld_")) {
       show(worldThumb, false);
       show(worldName, false);
       show(worldError, false);
@@ -483,8 +484,9 @@ export function createMainView(opts: MainViewOptions): MainView {
 
   // ---------------------------------------------------------------- データ取得
 
-  const loadingDialog = el("dialog", { class: "loading" }, spinner(40).cloneNode(true) as HTMLElement, el("p", { text: "フレンド一覧・ワールドを取得中..." })) as HTMLDialogElement;
-  loadingDialog.querySelector(".spinner")?.classList.add("large");
+  const loadingSpinner = spinner(40);
+  loadingSpinner.classList.add("large");
+  const loadingDialog = el("dialog", { class: "loading" }, loadingSpinner, el("p", { text: "フレンド一覧・ワールドを取得中..." })) as HTMLDialogElement;
   loadingDialog.addEventListener("cancel", (ev) => ev.preventDefault());
 
   async function refreshData(): Promise<void> {
