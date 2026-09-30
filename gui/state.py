@@ -53,7 +53,15 @@ def _save_config(data: dict):
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(json.dumps(data, ensure_ascii=False))
-            os.replace(tmp_name, path)
+            # Windows では対象が他プロセスに開かれていると PermissionError になるため短時間リトライ
+            for retry in range(3):
+                try:
+                    os.replace(tmp_name, path)
+                    break
+                except PermissionError:
+                    if retry == 2:
+                        raise
+                    time.sleep(0.05)
         except BaseException:
             try:
                 os.unlink(tmp_name)
