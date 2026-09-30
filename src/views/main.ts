@@ -1,0 +1,517 @@
+// メイン画面: インスタンス作成 / 招待 / ログ の 3 セクション。
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import {
+  api,
+  type ApiError,
+  type FavoritedWorld,
+  type Friend,
+  type Region,
+  type UiInstanceType,
+  type UserSummary,
+  userIconUrl,
+  worldThumbnailUrl,
+} from "../api";
+import { logStore } from "../log";
+import { banner, card, debounce, el, icon, sectionHeader, show, spinner } from "../ui";
+
+const MAX_SELECTED_FRIENDS = 20;
+/** 連打防止: アクションボタンは最短でも 2 秒間無効にする (Python 版と同じ)。 */
+const BUTTON_LOCK_MS = 2000;
+const DROPDOWN_LIMIT = 20;
+
+const INSTANCE_TYPES: { value: UiInstanceType; label: string }[] = [
+  { value: "public", label: "Public" },
+  { value: "friends", label: "Friends" },
+  { value: "hidden", label: "Friends+" },
+  { value: "invite", label: "Invite" },
+  { value: "invite_plus", label: "Invite+" },
+];
+const REGIONS: Region[] = ["jp", "us", "use", "eu"];
+
+export interface MainViewOptions {
+  user: UserSummary;
+  onLogout: () => void;
+  onSessionExpired: () => void;
+}
+
+export interface MainView {
+  root: HTMLElement;
+  refreshData(): Promise<void>;
+}
+
+export function createMainView(opts: MainViewOptions): MainView {
+  let friends: Friend[] = [];
+  let favoriteWorlds: FavoritedWorld[] = [];
+  let sessionExpired = false;
+
+  // ---------------------------------------------------------------- 共通
+
+  /** エラー処理。401 ならログイン画面へ戻す (true を返す)。それ以外はログに出す。 */
+  function handleError(e: unknown, prefix = "エラー"): boolean {
+    const err = e as ApiError;
+    if (err && err.kind === "unauthorized") {
+      if (!sessionExpired) {
+        sessionExpired = true;
+        opts.onSessionExpired();
+      }
+      return true;
+    }
+    logStore.append(`${prefix}: ${err?.message ?? String(e)}`);
+    return false;
+  }
+
+  const actionButtons: HTMLButtonElement[] = [];
+  let unlockAt = 0;
+  let unlockTimer: ReturnType<typeof setTimeout> | undefined;
+  function setButtonsDisabled(disabled: boolean): void {
+    if (disabled) {
+      unlockAt = Date.now() + BUTTON_LOCK_MS;
+      if (unlockTimer) clearTimeout(unlockTimer);
+      for (const b of actionButtons) b.disabled = true;
+      return;
+    }
+    const remaining = unlockAt - Date.now();
+    const enable = () => {
+      for (const b of actionButtons) b.disabled = false;
+    };
+    if (remaining > 0) unlockTimer = setTimeout(enable, remaining);
+    else enable();
+  }
+
+  async function loadImage(img: HTMLImageElement, url: string | null): Promise<boolean> {
+    if (!url) return false;
+    try {
+      img.src = await api.fetchImage(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ---------------------------------------------------------------- ヘッダー
+
+  const refreshButton = el("button", { class: "icon-btn white", type: "button", title: "フレンド・ワールド情報を更新" }, icon("refresh", 22));
+  const logoutButton = el("button", { class: "btn text", type: "button" }, icon("logout", 18), el("span", { text: "ログアウト" })) as HTMLButtonElement;
+  const headerRight = el("div", { class: "banner-right" }, el("span", { text: opts.user.displayName }), refreshButton, logoutButton);
+
+  logoutButton.addEventListener("click", async () => {
+    logoutButton.disabled = true;
+    try {
+      await api.logout();
+    } catch (e) {
+      handleError(e, "ログアウトエラー");
+    }
+    opts.onLogout();
+  });
+
+  // ---------------------------------------------------------------- インスタンス作成
+
+  const worldSearch = el("input", { type: "text", class: "with-icon", placeholder: "お気に入りワールドから検索" }) as HTMLInputElement;
+  const worldDropdown = el("div", { class: "dropdown hidden", role: "listbox" });
+  const worldId = el("input", { type: "text", placeholder: "wrld_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", spellcheck: "false" }) as HTMLInputElement;
+  const typeSelect = el("select") as HTMLSelectElement;
+  for (const t of INSTANCE_TYPES) typeSelect.append(el("option", { value: t.value, text: t.label }));
+  const regionSelect = el("select") as HTMLSelectElement;
+  for (const r of REGIONS) regionSelect.append(el("option", { value: r, text: r }));
+  const createButton = el("button", { class: "btn", type: "button" }, icon("addCircle", 18), el("span", { text: "インスタンスを作成" })) as HTMLButtonElement;
+  const locationField = el("input", { type: "text", readonly: true }) as HTMLInputElement;
+  const copyButton = el("button", { class: "icon-btn", type: "button", title: "コピー" }, icon("copy", 20));
+  const locationRow = el("div", { class: "row hidden" }, el("div", { class: "field" }, el("label", { text: "インスタンス場所" }), locationField), copyButton);
+
+  const worldLoading = spinner(20);
+  const worldThumb = el("img", { class: "thumb", alt: "" }) as HTMLImageElement;
+  const worldName = el("div", { class: "name" });
+  const worldError = el("div", { class: "msg error" });
+  const worldPanel = el("div", { class: "side-panel world" }, worldLoading, worldThumb, worldName, worldError);
+  show(worldLoading, false);
+  show(worldThumb, false);
+  show(worldName, false);
+  show(worldError, false);
+
+  let worldFetchSeq = 0;
+  async function fetchWorldInfo(id: string): Promise<void> {
+    const seq = ++worldFetchSeq;
+    id = id.trim();
+    if (!id) {
+      show(worldThumb, false);
+      show(worldName, false);
+      show(worldError, false);
+      show(worldLoading, false);
+      return;
+    }
+    show(worldLoading, true);
+    show(worldThumb, false);
+    show(worldName, false);
+    show(worldError, false);
+    try {
+      const world = await api.getWorld(id);
+      if (seq !== worldFetchSeq) return;
+      const ok = await loadImage(worldThumb, worldThumbnailUrl(world));
+      if (seq !== worldFetchSeq) return;
+      show(worldThumb, ok);
+      worldName.textContent = world.name;
+      show(worldName, true);
+    } catch (e) {
+      if (seq !== worldFetchSeq) return;
+      const err = e as ApiError;
+      if (err.kind === "unauthorized") {
+        handleError(err);
+        return;
+      }
+      worldError.textContent = err.status === 404 ? "ワールドが見つかりません" : err.kind === "validation" ? "ワールドIDの形式が正しくありません" : `エラー: ${err.status ?? err.message}`;
+      show(worldError, true);
+    } finally {
+      if (seq === worldFetchSeq) show(worldLoading, false);
+    }
+  }
+
+  worldId.addEventListener("input", debounce(() => void fetchWorldInfo(worldId.value), 1000));
+
+  function renderWorldDropdown(list: FavoritedWorld[]): void {
+    worldDropdown.replaceChildren(
+      ...list.slice(0, DROPDOWN_LIMIT).map((w) =>
+        el(
+          "button",
+          {
+            class: "dropdown-item",
+            type: "button",
+            onMousedown: (ev) => ev.preventDefault(), // blur より先に選択させる
+            onClick: () => selectWorld(w),
+          },
+          el("span", { class: "item-name", text: w.name }),
+          el("span", { class: "item-id", text: w.id }),
+        ),
+      ),
+    );
+    show(worldDropdown, list.length > 0);
+  }
+
+  function selectWorld(w: FavoritedWorld): void {
+    worldSearch.value = w.name;
+    worldId.value = w.id;
+    show(worldDropdown, false);
+    void fetchWorldInfo(w.id);
+  }
+
+  worldSearch.addEventListener("input", () => {
+    const q = worldSearch.value.trim().toLowerCase();
+    if (!q) {
+      show(worldDropdown, false);
+      return;
+    }
+    renderWorldDropdown(favoriteWorlds.filter((w) => w.name.toLowerCase().includes(q) || w.id.toLowerCase().includes(q)));
+  });
+  worldSearch.addEventListener("focus", () => {
+    if (favoriteWorlds.length > 0 && !worldSearch.value) renderWorldDropdown(favoriteWorlds);
+  });
+  worldSearch.addEventListener("blur", () => setTimeout(() => show(worldDropdown, false), 200));
+
+  createButton.addEventListener("click", async () => {
+    setButtonsDisabled(true);
+    try {
+      const instance = await api.createInstance(worldId.value.trim(), typeSelect.value as UiInstanceType, regionSelect.value as Region);
+      locationField.value = instance.location;
+      show(locationRow, true);
+      inviteInstanceId.value = instance.location;
+    } catch (e) {
+      handleError(e);
+    } finally {
+      setButtonsDisabled(false);
+    }
+  });
+
+  copyButton.addEventListener("click", async () => {
+    const text = locationField.value;
+    if (!text) return;
+    try {
+      await writeText(text);
+    } catch {
+      try {
+        await navigator.clipboard.writeText(text);
+      } catch (e) {
+        logStore.append(`クリップボードへのコピーに失敗しました: ${String(e)}`);
+        return;
+      }
+    }
+    logStore.append("インスタンス場所をコピーしました。");
+  });
+
+  const instanceCard = card(
+    sectionHeader("dns", "インスタンスを作成"),
+    el(
+      "div",
+      { class: "split" },
+      el(
+        "div",
+        { class: "col" },
+        el("div", { class: "field" }, el("label", { text: "ワールド検索 (名前 or ID)" }), el("span", { class: "prefix-icon" }, icon("search", 18)), worldSearch),
+        worldDropdown,
+        el("div", { class: "field" }, el("label", { text: "ワールドID" }), worldId),
+        el(
+          "div",
+          { class: "row" },
+          el("div", { class: "field" }, el("label", { text: "インスタンスタイプ" }), typeSelect),
+          el("div", { class: "field" }, el("label", { text: "リージョン" }), regionSelect),
+        ),
+        el("div", { class: "row", style: "margin-top:6px" }, createButton),
+        locationRow,
+      ),
+      worldPanel,
+    ),
+  );
+
+  // ---------------------------------------------------------------- 招待
+
+  const friendSearch = el("input", { type: "text", class: "with-icon", placeholder: "フレンド名、または usr_... を直接入力" }) as HTMLInputElement;
+  const friendDropdown = el("div", { class: "dropdown hidden", role: "listbox" });
+  const chips = el("div", { class: "chips" });
+  const counter = el("div", { class: "counter hidden" });
+  const inviteInstanceId = el("input", { type: "text", placeholder: "wrld_...:12345~region(jp)", spellcheck: "false" }) as HTMLInputElement;
+  const inviteButton = el("button", { class: "btn invite", type: "button" }, icon("personAdd", 18), el("span", { text: "招待する" })) as HTMLButtonElement;
+  const selfInviteButton = el("button", { class: "btn self-invite", type: "button" }, icon("person", 18), el("span", { text: "自分に招待を送る" })) as HTMLButtonElement;
+
+  const userLoading = spinner(20);
+  const userIcon = el("img", { class: "avatar", alt: "" }) as HTMLImageElement;
+  const userName = el("div", { class: "name" });
+  const userError = el("div", { class: "msg error" });
+  const userPanel = el("div", { class: "side-panel user" }, userLoading, userIcon, userName, userError);
+  show(userLoading, false);
+  show(userIcon, false);
+  show(userName, false);
+  show(userError, false);
+
+  /** 選択中フレンド (挿入順を保つ)。 */
+  const selected = new Map<string, string>();
+
+  function resetUserPanel(): void {
+    show(userLoading, false);
+    show(userIcon, false);
+    show(userName, false);
+    show(userError, false);
+  }
+
+  let userFetchSeq = 0;
+  async function fetchUserInfo(id: string): Promise<void> {
+    const seq = ++userFetchSeq;
+    resetUserPanel();
+    if (!id) return;
+    show(userLoading, true);
+    try {
+      const user = await api.getUser(id);
+      if (seq !== userFetchSeq) return;
+      const ok = await loadImage(userIcon, userIconUrl(user));
+      if (seq !== userFetchSeq) return;
+      show(userIcon, ok);
+      userName.textContent = user.displayName;
+      show(userName, true);
+    } catch (e) {
+      if (seq !== userFetchSeq) return;
+      const err = e as ApiError;
+      if (err.kind === "unauthorized") {
+        handleError(err);
+        return;
+      }
+      userError.textContent = err.status === 404 ? "ユーザーが見つかりません" : err.kind === "validation" ? "ユーザーIDの形式が正しくありません" : `エラー: ${err.status ?? err.message}`;
+      show(userError, true);
+    } finally {
+      if (seq === userFetchSeq) show(userLoading, false);
+    }
+  }
+
+  function updateCounter(): void {
+    counter.textContent = `選択中: ${selected.size} / ${MAX_SELECTED_FRIENDS}`;
+    show(counter, selected.size > 0);
+  }
+
+  function rebuildChips(): void {
+    chips.replaceChildren(
+      ...[...selected.entries()].map(([id, name]) =>
+        el(
+          "span",
+          { class: "chip" },
+          el("span", { text: name }),
+          el("button", { type: "button", title: "削除", "aria-label": `${name} を削除`, onClick: () => removeFriend(id) }, icon("close", 16)),
+        ),
+      ),
+    );
+    updateCounter();
+  }
+
+  function firstSelectedId(): string | undefined {
+    return selected.keys().next().value;
+  }
+
+  function removeFriend(id: string): void {
+    const wasFirst = firstSelectedId() === id;
+    selected.delete(id);
+    rebuildChips();
+    if (selected.size === 0) {
+      userFetchSeq++;
+      resetUserPanel();
+    } else if (wasFirst) {
+      void fetchUserInfo(firstSelectedId() ?? "");
+    }
+  }
+
+  function selectFriend(f: Friend): void {
+    show(friendDropdown, false);
+    friendSearch.value = "";
+    if (selected.has(f.id)) return;
+    if (selected.size >= MAX_SELECTED_FRIENDS) {
+      logStore.append(`選択上限(${MAX_SELECTED_FRIENDS}人)に達しています。`);
+      return;
+    }
+    const isFirst = selected.size === 0;
+    selected.set(f.id, f.displayName);
+    rebuildChips();
+    if (isFirst) void fetchUserInfo(f.id);
+  }
+
+  function renderFriendDropdown(list: Friend[]): void {
+    friendDropdown.replaceChildren(
+      ...list.slice(0, DROPDOWN_LIMIT).map((f) =>
+        el(
+          "button",
+          {
+            class: "dropdown-item",
+            type: "button",
+            onMousedown: (ev) => ev.preventDefault(),
+            onClick: () => selectFriend(f),
+          },
+          el("span", { class: "item-name", text: f.displayName }),
+          el("span", { class: "item-id", text: f.id }),
+        ),
+      ),
+    );
+    show(friendDropdown, list.length > 0);
+  }
+
+  friendSearch.addEventListener("input", () => {
+    const q = friendSearch.value.trim().toLowerCase();
+    if (!q) {
+      show(friendDropdown, false);
+      return;
+    }
+    renderFriendDropdown(friends.filter((f) => f.displayName.toLowerCase().includes(q) || f.id.toLowerCase().includes(q)));
+  });
+  friendSearch.addEventListener("focus", () => {
+    if (friends.length > 0 && !friendSearch.value) renderFriendDropdown(friends);
+  });
+  friendSearch.addEventListener("blur", () => setTimeout(() => show(friendDropdown, false), 200));
+
+  inviteButton.addEventListener("click", async () => {
+    setButtonsDisabled(true);
+    try {
+      const location = inviteInstanceId.value.trim();
+      if (!location) {
+        logStore.append("エラー: インスタンスIDを入力してください。");
+        return;
+      }
+      let targets = [...selected.entries()].map(([id, name]) => ({ id, name }));
+      if (targets.length === 0) {
+        const direct = friendSearch.value.trim();
+        if (!direct) {
+          logStore.append("エラー: ユーザーを選択または入力してください。");
+          return;
+        }
+        targets = [{ id: direct, name: direct }];
+      }
+      const report = await api.inviteUsers(location, targets);
+      // 成功した相手だけ選択から外す (失敗分は再送できるよう残す)
+      for (const r of report.results) {
+        if (r.ok) selected.delete(r.userId);
+      }
+      rebuildChips();
+      userFetchSeq++;
+      resetUserPanel();
+      friendSearch.value = "";
+      if (selected.size > 0) void fetchUserInfo(firstSelectedId() ?? "");
+    } catch (e) {
+      handleError(e);
+    } finally {
+      setButtonsDisabled(false);
+    }
+  });
+
+  selfInviteButton.addEventListener("click", async () => {
+    setButtonsDisabled(true);
+    try {
+      const location = inviteInstanceId.value.trim();
+      if (!location) {
+        logStore.append("エラー: インスタンスIDを入力してください。");
+        return;
+      }
+      await api.inviteSelf(location);
+    } catch (e) {
+      handleError(e);
+    } finally {
+      setButtonsDisabled(false);
+    }
+  });
+
+  const inviteCard = card(
+    sectionHeader("mail", "招待"),
+    el(
+      "div",
+      { class: "split" },
+      el(
+        "div",
+        { class: "col" },
+        el("div", { class: "field" }, el("label", { text: "フレンド検索 (名前 or ID)" }), el("span", { class: "prefix-icon" }, icon("search", 18)), friendSearch),
+        friendDropdown,
+        chips,
+        counter,
+        el("div", { class: "field" }, el("label", { text: "インスタンスID" }), inviteInstanceId),
+        el("div", { class: "row wrap" }, inviteButton, selfInviteButton),
+      ),
+      userPanel,
+    ),
+  );
+
+  actionButtons.push(createButton, inviteButton, selfInviteButton);
+
+  // ---------------------------------------------------------------- ログ
+
+  const logPanel = el("pre", { class: "log", "aria-live": "polite" });
+  const clearLogButton = el("button", { class: "btn text danger", type: "button" }, icon("delete", 18), el("span", { text: "クリア" }));
+  clearLogButton.addEventListener("click", () => logStore.clear());
+  logStore.subscribe((lines) => {
+    logPanel.textContent = lines.join("\n");
+    logPanel.scrollTop = logPanel.scrollHeight;
+  });
+  const logCard = card(sectionHeader("terminal", "ログ", clearLogButton), logPanel);
+
+  // ---------------------------------------------------------------- データ取得
+
+  const loadingDialog = el("dialog", { class: "loading" }, spinner(40).cloneNode(true) as HTMLElement, el("p", { text: "フレンド一覧・ワールドを取得中..." })) as HTMLDialogElement;
+  loadingDialog.querySelector(".spinner")?.classList.add("large");
+  loadingDialog.addEventListener("cancel", (ev) => ev.preventDefault());
+
+  async function refreshData(): Promise<void> {
+    if (!loadingDialog.isConnected) document.body.append(loadingDialog);
+    if (!loadingDialog.open) loadingDialog.showModal();
+    try {
+      friends = await api.listFriends();
+      favoriteWorlds = await api.listFavoriteWorlds();
+      logStore.append(`フレンド ${friends.length} 人、お気に入りワールド ${favoriteWorlds.length} 件を取得しました。`);
+    } catch (e) {
+      handleError(e, "データ取得エラー");
+    } finally {
+      if (loadingDialog.open) loadingDialog.close();
+    }
+  }
+  refreshButton.addEventListener("click", () => void refreshData());
+
+  const root = el("div", { class: "col" }, banner(headerRight), instanceCard, inviteCard, logCard);
+
+  // 画面を離れるときにダイアログを片付ける
+  const observer = new MutationObserver(() => {
+    if (!root.isConnected) {
+      loadingDialog.remove();
+      observer.disconnect();
+    }
+  });
+  observer.observe(document.getElementById("app") ?? document.body, { childList: true });
+
+  return { root, refreshData };
+}
