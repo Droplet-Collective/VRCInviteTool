@@ -108,6 +108,86 @@ pub struct FavoritedWorld {
     pub favorite_group: Option<String>,
 }
 
+/// `GET /worlds?user=me` の要素 (LimitedWorld)。自作ワールド (非公開含む)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OwnWorld {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub author_name: Option<String>,
+    #[serde(default)]
+    pub thumbnail_image_url: Option<String>,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    /// `public` / `private` / `hidden`。
+    #[serde(default)]
+    pub release_status: Option<String>,
+}
+
+/// UI に渡すワールド一覧の要素。お気に入りと自作をマージし、id で重複排除したもの。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorldEntry {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub author_name: Option<String>,
+    #[serde(default)]
+    pub thumbnail_image_url: Option<String>,
+    #[serde(default)]
+    pub image_url: Option<String>,
+    /// お気に入りに含まれる。
+    pub favorite: bool,
+    /// 自分が作成したワールド。
+    pub own: bool,
+    #[serde(default)]
+    pub release_status: Option<String>,
+    #[serde(default)]
+    pub favorite_group: Option<String>,
+}
+
+/// お気に入り (先) と自作 (後) を結合し、同じ id は 1 件にまとめる (両方に含まれる場合は
+/// `favorite` と `own` の両方が true になり、自作側の `releaseStatus` を引き継ぐ)。
+pub fn merge_worlds(favorites: Vec<FavoritedWorld>, own: Vec<OwnWorld>) -> Vec<WorldEntry> {
+    let mut out: Vec<WorldEntry> = Vec::with_capacity(favorites.len() + own.len());
+    for w in favorites {
+        if out.iter().any(|e| e.id == w.id) {
+            continue;
+        }
+        out.push(WorldEntry {
+            id: w.id,
+            name: w.name,
+            author_name: w.author_name,
+            thumbnail_image_url: w.thumbnail_image_url,
+            image_url: w.image_url,
+            favorite: true,
+            own: false,
+            release_status: None,
+            favorite_group: w.favorite_group,
+        });
+    }
+    for w in own {
+        if let Some(e) = out.iter_mut().find(|e| e.id == w.id) {
+            e.own = true;
+            e.release_status = w.release_status;
+            continue;
+        }
+        out.push(WorldEntry {
+            id: w.id,
+            name: w.name,
+            author_name: w.author_name,
+            thumbnail_image_url: w.thumbnail_image_url,
+            image_url: w.image_url,
+            favorite: false,
+            own: true,
+            release_status: w.release_status,
+            favorite_group: None,
+        });
+    }
+    out
+}
+
 /// API 上のインスタンスタイプ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -398,6 +478,44 @@ mod tests {
             serde_json::from_str(r#"{"id":"usr_1","displayName":"A","iconUrl":"https://x/icon"}"#)
                 .unwrap();
         assert_eq!(u.icon(), Some("https://x/icon"));
+    }
+
+    #[test]
+    fn merges_favorites_and_own_worlds_by_id() {
+        let fav = |id: &str, name: &str| FavoritedWorld {
+            id: id.into(),
+            name: name.into(),
+            author_name: None,
+            thumbnail_image_url: None,
+            image_url: None,
+            favorite_group: Some("worlds1".into()),
+        };
+        let own = |id: &str, name: &str, status: &str| OwnWorld {
+            id: id.into(),
+            name: name.into(),
+            author_name: Some("me".into()),
+            thumbnail_image_url: None,
+            image_url: None,
+            release_status: Some(status.into()),
+        };
+        let merged = merge_worlds(
+            vec![
+                fav("wrld_a", "A"),
+                fav("wrld_b", "B"),
+                fav("wrld_a", "A dup"),
+            ],
+            vec![own("wrld_b", "B", "private"), own("wrld_c", "C", "public")],
+        );
+        let ids: Vec<&str> = merged.iter().map(|w| w.id.as_str()).collect();
+        assert_eq!(ids, vec!["wrld_a", "wrld_b", "wrld_c"]);
+        assert!(merged[0].favorite && !merged[0].own);
+        assert!(merged[1].favorite && merged[1].own);
+        assert_eq!(merged[1].release_status.as_deref(), Some("private"));
+        assert_eq!(merged[1].favorite_group.as_deref(), Some("worlds1"));
+        assert!(!merged[2].favorite && merged[2].own);
+        let json = serde_json::to_value(&merged[2]).unwrap();
+        assert_eq!(json["releaseStatus"], "public");
+        assert_eq!(json["own"], true);
     }
 
     #[test]

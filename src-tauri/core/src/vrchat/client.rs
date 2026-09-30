@@ -356,6 +356,29 @@ impl VrcClient {
         Ok(all)
     }
 
+    /// 自分が作成したワールドを全件取得する (`GET /worlds?user=me&releaseStatus=all`)。
+    /// 非公開 (private) のワールドも含む (自分ならインスタンスを作れるため)。
+    pub async fn list_own_worlds(&self) -> Result<Vec<OwnWorld>> {
+        let mut all = Vec::new();
+        let mut offset = 0usize;
+        for _ in 0..MAX_PAGES {
+            let rb = self.http.get(self.url("worlds")).query(&[
+                ("user", "me".to_string()),
+                ("releaseStatus", "all".to_string()),
+                ("n", PAGE_SIZE.to_string()),
+                ("offset", offset.to_string()),
+            ]);
+            let batch: Vec<OwnWorld> = self.send_json(rb).await?;
+            let n = batch.len();
+            all.extend(batch);
+            if n < PAGE_SIZE {
+                break;
+            }
+            offset += n;
+        }
+        Ok(all)
+    }
+
     /// `POST /instances`。
     pub async fn create_instance(&self, req: &CreateInstanceRequest) -> Result<Instance> {
         validate::validate_world_id(&req.world_id)?;

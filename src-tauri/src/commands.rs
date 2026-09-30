@@ -389,13 +389,24 @@ pub async fn logout(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()>
 // データ取得
 // ----------------------------------------------------------------------
 
+/// お気に入りワールドと自作ワールドを取得して結合する (id で重複排除)。
+/// 自作ワールドの取得だけが失敗した場合 (401 以外) は警告を出してお気に入りのみ返す。
 #[tauri::command]
-pub async fn list_favorite_worlds(state: State<'_, AppState>) -> CmdResult<Vec<FavoritedWorld>> {
+pub async fn list_worlds(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Vec<WorldEntry>> {
     state.current_user().await.map_err(CmdError::from)?;
-    match state.client.list_favorite_worlds().await {
-        Ok(v) => Ok(v),
-        Err(e) => Err(fail(&state, e).await),
-    }
+    let favorites = match state.client.list_favorite_worlds().await {
+        Ok(v) => v,
+        Err(e) => return Err(fail(&state, e).await),
+    };
+    let own = match state.client.list_own_worlds().await {
+        Ok(v) => v,
+        Err(e @ Error::Unauthorized { .. }) => return Err(fail(&state, e).await),
+        Err(e) => {
+            ui_log(&app, format!("警告: 自作ワールドの取得に失敗しました: {e}"));
+            Vec::new()
+        }
+    };
+    Ok(merge_worlds(favorites, own))
 }
 
 #[tauri::command]

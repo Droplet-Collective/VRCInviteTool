@@ -74,7 +74,11 @@ export interface World {
   imageUrl?: string | null;
 }
 
-export interface FavoritedWorld extends World {
+/** お気に入り + 自作ワールドを結合した一覧の要素 (バックエンドで id 重複排除済み)。 */
+export interface WorldEntry extends World {
+  favorite: boolean;
+  own: boolean;
+  releaseStatus?: string | null;
   favoriteGroup?: string | null;
 }
 
@@ -121,7 +125,7 @@ export const api = {
   submitTwoFactor: (code: string) => call<LoginOutcome>("submit_two_factor", { code }),
   cancelLogin: () => call<void>("cancel_login"),
   logout: () => call<void>("logout"),
-  listFavoriteWorlds: () => call<FavoritedWorld[]>("list_favorite_worlds"),
+  listWorlds: () => call<WorldEntry[]>("list_worlds"),
   getWorld: (worldId: string) => call<World>("get_world", { worldId }),
   createInstance: (worldId: string, instanceType: UiInstanceType, region: Region) =>
     call<Instance>("create_instance", { worldId, instanceType, region }),

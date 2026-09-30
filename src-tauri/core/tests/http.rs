@@ -298,6 +298,30 @@ async fn friends_pagination_and_favorites() {
     let worlds = c.list_favorite_worlds().await.unwrap();
     assert_eq!(worlds.len(), 1);
     assert_eq!(worlds[0].favorite_group.as_deref(), Some("worlds1"));
+
+    // 自作ワールド: user=me & releaseStatus=all (非公開も含む)
+    Mock::given(method("GET"))
+        .and(path("/api/1/worlds"))
+        .and(query_param("user", "me"))
+        .and(query_param("releaseStatus", "all"))
+        .and(query_param("n", "100"))
+        .and(query_param("offset", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+            { "id": "wrld_1", "name": "W1", "authorName": "me", "releaseStatus": "public" },
+            { "id": "wrld_2", "name": "Secret", "authorName": "me", "releaseStatus": "private",
+              "thumbnailImageUrl": "https://api.vrchat.cloud/api/1/image/file_y/1/256" }
+        ])))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let own = c.list_own_worlds().await.unwrap();
+    assert_eq!(own.len(), 2);
+    assert_eq!(own[1].release_status.as_deref(), Some("private"));
+
+    let merged = merge_worlds(worlds, own);
+    assert_eq!(merged.len(), 2);
+    assert!(merged[0].favorite && merged[0].own);
+    assert!(!merged[1].favorite && merged[1].own);
 }
 
 #[tokio::test]

@@ -3,11 +3,11 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   api,
   type ApiError,
-  type FavoritedWorld,
   type Friend,
   type Region,
   type UiInstanceType,
   type UserSummary,
+  type WorldEntry,
   userIconUrl,
   worldThumbnailUrl,
 } from "../api";
@@ -27,6 +27,7 @@ const INSTANCE_TYPES: { value: UiInstanceType; label: string }[] = [
   { value: "invite_plus", label: "Invite+" },
 ];
 const REGIONS: Region[] = ["jp", "us", "use", "eu"];
+const USER_ID_RE = /^usr_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface MainViewOptions {
   user: UserSummary;
@@ -41,7 +42,7 @@ export interface MainView {
 
 export function createMainView(opts: MainViewOptions): MainView {
   let friends: Friend[] = [];
-  let favoriteWorlds: FavoritedWorld[] = [];
+  let worlds: WorldEntry[] = [];
   let sessionExpired = false;
 
   // ---------------------------------------------------------------- 共通
@@ -110,7 +111,7 @@ export function createMainView(opts: MainViewOptions): MainView {
 
   // ---------------------------------------------------------------- インスタンス作成
 
-  const worldSearch = el("input", { type: "text", class: "with-icon", placeholder: "お気に入りワールドから検索" }) as HTMLInputElement;
+  const worldSearch = el("input", { type: "text", class: "with-icon", placeholder: "お気に入り・自作ワールドから検索" }) as HTMLInputElement;
   const worldDropdown = el("div", { class: "dropdown hidden", role: "listbox" });
   const worldId = el("input", { type: "text", placeholder: "wrld_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", spellcheck: "false" }) as HTMLInputElement;
   const typeSelect = el("select") as HTMLSelectElement;
@@ -172,26 +173,37 @@ export function createMainView(opts: MainViewOptions): MainView {
 
   worldId.addEventListener("input", debounce(() => void fetchWorldInfo(worldId.value), 1000));
 
-  function renderWorldDropdown(list: FavoritedWorld[]): void {
-    worldDropdown.replaceChildren(
-      ...list.slice(0, DROPDOWN_LIMIT).map((w) =>
-        el(
-          "button",
-          {
-            class: "dropdown-item",
-            type: "button",
-            onMousedown: (ev) => ev.preventDefault(), // blur より先に選択させる
-            onClick: () => selectWorld(w),
-          },
-          el("span", { class: "item-name", text: w.name }),
-          el("span", { class: "item-id", text: w.id }),
-        ),
-      ),
-    );
-    show(worldDropdown, list.length > 0);
+  /** 「お気に入り」「自作ワールド」の 2 グループに分けて候補を描画する。 */
+  function renderWorldDropdown(list: WorldEntry[]): void {
+    const item = (w: WorldEntry): HTMLElement => {
+      const tags: HTMLElement[] = [];
+      if (w.favorite && w.own) tags.push(el("span", { class: "item-tag", text: "自作" }));
+      if (w.own && w.releaseStatus && w.releaseStatus !== "public") tags.push(el("span", { class: "item-tag", text: "非公開" }));
+      return el(
+        "button",
+        {
+          class: "dropdown-item",
+          type: "button",
+          onMousedown: (ev) => ev.preventDefault(), // blur より先に選択させる
+          onClick: () => selectWorld(w),
+        },
+        el("span", { class: "item-name" }, el("span", { text: w.name }), ...tags),
+        el("span", { class: "item-id", text: w.id }),
+      );
+    };
+    const nodes: HTMLElement[] = [];
+    const group = (label: string, items: WorldEntry[]): void => {
+      if (items.length === 0) return;
+      nodes.push(el("div", { class: "dropdown-group", role: "presentation", text: label }));
+      for (const w of items.slice(0, DROPDOWN_LIMIT)) nodes.push(item(w));
+    };
+    group("お気に入り", list.filter((w) => w.favorite));
+    group("自作ワールド", list.filter((w) => w.own && !w.favorite));
+    worldDropdown.replaceChildren(...nodes);
+    show(worldDropdown, nodes.length > 0);
   }
 
-  function selectWorld(w: FavoritedWorld): void {
+  function selectWorld(w: WorldEntry): void {
     worldSearch.value = w.name;
     worldId.value = w.id;
     show(worldDropdown, false);
@@ -204,10 +216,10 @@ export function createMainView(opts: MainViewOptions): MainView {
       show(worldDropdown, false);
       return;
     }
-    renderWorldDropdown(favoriteWorlds.filter((w) => w.name.toLowerCase().includes(q) || w.id.toLowerCase().includes(q)));
+    renderWorldDropdown(worlds.filter((w) => w.name.toLowerCase().includes(q) || w.id.toLowerCase().includes(q)));
   });
   worldSearch.addEventListener("focus", () => {
-    if (favoriteWorlds.length > 0 && !worldSearch.value) renderWorldDropdown(favoriteWorlds);
+    if (worlds.length > 0 && !worldSearch.value) renderWorldDropdown(worlds);
   });
   worldSearch.addEventListener("blur", () => setTimeout(() => show(worldDropdown, false), 200));
 
@@ -269,6 +281,8 @@ export function createMainView(opts: MainViewOptions): MainView {
 
   const friendSearch = el("input", { type: "text", class: "with-icon", placeholder: "フレンド名、または usr_... を直接入力" }) as HTMLInputElement;
   const friendDropdown = el("div", { class: "dropdown hidden", role: "listbox" });
+  /** フォーカスを外したときの名前解決の結果 (候補が複数 / 無い) を短く表示する。 */
+  const friendHint = el("p", { class: "msg warning field-hint hidden", "aria-live": "polite" });
   const chips = el("div", { class: "chips" });
   const counter = el("div", { class: "counter hidden" });
   const inviteInstanceId = el("input", { type: "text", placeholder: "wrld_...:12345~region(jp)", spellcheck: "false" }) as HTMLInputElement;
@@ -358,9 +372,15 @@ export function createMainView(opts: MainViewOptions): MainView {
     }
   }
 
+  function setFriendHint(text: string): void {
+    friendHint.textContent = text;
+    show(friendHint, text.length > 0);
+  }
+
   function selectFriend(f: Friend): void {
     show(friendDropdown, false);
     friendSearch.value = "";
+    setFriendHint("");
     if (selected.has(f.id)) return;
     if (selected.size >= MAX_SELECTED_FRIENDS) {
       logStore.append(`選択上限(${MAX_SELECTED_FRIENDS}人)に達しています。`);
@@ -372,6 +392,9 @@ export function createMainView(opts: MainViewOptions): MainView {
     if (isFirst) void fetchUserInfo(f.id);
   }
 
+  /** 候補クリック中は blur 側の名前解決を抑止する (クリックによる選択を優先させる)。 */
+  let pickingFriend = false;
+
   function renderFriendDropdown(list: Friend[]): void {
     friendDropdown.replaceChildren(
       ...list.slice(0, DROPDOWN_LIMIT).map((f) =>
@@ -380,8 +403,15 @@ export function createMainView(opts: MainViewOptions): MainView {
           {
             class: "dropdown-item",
             type: "button",
-            onMousedown: (ev) => ev.preventDefault(),
-            onClick: () => selectFriend(f),
+            onMousedown: (ev) => {
+              ev.preventDefault(); // 入力欄の blur を起こさず、クリックで選択させる
+              pickingFriend = true;
+              setTimeout(() => (pickingFriend = false), 300);
+            },
+            onClick: () => {
+              pickingFriend = false;
+              selectFriend(f);
+            },
           },
           el("span", { class: "item-name", text: f.displayName }),
           el("span", { class: "item-id", text: f.id }),
@@ -391,7 +421,58 @@ export function createMainView(opts: MainViewOptions): MainView {
     show(friendDropdown, list.length > 0);
   }
 
+  /**
+   * 入力欄の文字列からフレンドを決める (ワールドID欄と同様、フォーカスを外したとき / Enter で動く)。
+   * `usr_...` はそのまま選択して表示名を後から取得する。名前は 完全一致 → 前方一致 → 部分一致 の順で
+   * ちょうど 1 人に絞れたときだけ選択し、複数 / 0 件ならヒントを出して何もしない。
+   */
+  function resolveFriendInput(): void {
+    const text = friendSearch.value.trim();
+    if (!text) return;
+    if (/^usr_/i.test(text)) {
+      if (!USER_ID_RE.test(text)) {
+        setFriendHint("ユーザーIDの形式が正しくありません (usr_xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)");
+        return;
+      }
+      const id = text.toLowerCase().startsWith("usr_") ? `usr_${text.slice(4).toLowerCase()}` : text;
+      const known = friends.find((f) => f.id === id);
+      const before = selected.size;
+      selectFriend(known ?? { id, displayName: id });
+      if (!known && selected.size > before) {
+        // 表示名を取得してチップの表示を差し替える (取得できなくても ID のまま残す)
+        void api.getUser(id).then(
+          (u) => {
+            if (selected.has(id)) {
+              selected.set(id, u.displayName);
+              rebuildChips();
+            }
+          },
+          (e: ApiError) => {
+            if (e.kind === "unauthorized") handleError(e);
+          },
+        );
+      }
+      return;
+    }
+    const q = text.toLowerCase();
+    const pick = (pred: (name: string) => boolean): Friend[] | null => {
+      const hits = friends.filter((f) => pred(f.displayName.toLowerCase()));
+      return hits.length === 0 ? null : hits;
+    };
+    const hits = pick((n) => n === q) ?? pick((n) => n.startsWith(q)) ?? pick((n) => n.includes(q));
+    if (!hits) {
+      setFriendHint("該当するフレンドがいません。");
+      return;
+    }
+    if (hits.length > 1) {
+      setFriendHint(`候補が ${hits.length} 人います。候補から選択してください。`);
+      return;
+    }
+    selectFriend(hits[0]!);
+  }
+
   friendSearch.addEventListener("input", () => {
+    setFriendHint("");
     const q = friendSearch.value.trim().toLowerCase();
     if (!q) {
       show(friendDropdown, false);
@@ -402,7 +483,18 @@ export function createMainView(opts: MainViewOptions): MainView {
   friendSearch.addEventListener("focus", () => {
     if (friends.length > 0 && !friendSearch.value) renderFriendDropdown(friends);
   });
-  friendSearch.addEventListener("blur", () => setTimeout(() => show(friendDropdown, false), 200));
+  friendSearch.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      resolveFriendInput();
+    } else if (ev.key === "Escape") {
+      show(friendDropdown, false);
+    }
+  });
+  friendSearch.addEventListener("blur", () => {
+    setTimeout(() => show(friendDropdown, false), 200);
+    if (!pickingFriend) resolveFriendInput();
+  });
 
   inviteButton.addEventListener("click", async () => {
     setButtonsDisabled(true);
@@ -464,6 +556,7 @@ export function createMainView(opts: MainViewOptions): MainView {
         { class: "col" },
         el("div", { class: "field" }, el("label", { text: "フレンド検索 (名前 or ID)" }), el("span", { class: "prefix-icon" }, icon("search", 18)), friendSearch),
         friendDropdown,
+        friendHint,
         chips,
         counter,
         el("div", { class: "field" }, el("label", { text: "インスタンスID" }), inviteInstanceId),
@@ -498,8 +591,10 @@ export function createMainView(opts: MainViewOptions): MainView {
     if (!loadingDialog.open) loadingDialog.showModal();
     try {
       friends = await api.listFriends();
-      favoriteWorlds = await api.listFavoriteWorlds();
-      logStore.append(`フレンド ${friends.length} 人、お気に入りワールド ${favoriteWorlds.length} 件を取得しました。`);
+      worlds = await api.listWorlds();
+      const favCount = worlds.filter((w) => w.favorite).length;
+      const ownCount = worlds.filter((w) => w.own).length;
+      logStore.append(`フレンド ${friends.length} 人、お気に入りワールド ${favCount} 件、自作ワールド ${ownCount} 件を取得しました。`);
     } catch (e) {
       handleError(e, "データ取得エラー");
     } finally {

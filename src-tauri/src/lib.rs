@@ -28,7 +28,7 @@ pub fn run() {
             commands::submit_two_factor,
             commands::cancel_login,
             commands::logout,
-            commands::list_favorite_worlds,
+            commands::list_worlds,
             commands::get_world,
             commands::create_instance,
             commands::list_friends,
