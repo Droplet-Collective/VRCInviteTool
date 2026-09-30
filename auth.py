@@ -102,8 +102,8 @@ def _make_cookie(name, value, domain, path, expires):
 def _do_login(
     api_client: vrchatapi.ApiClient,
     input_fn: Optional[Callable[[str], Optional[str]]] = None,
-) -> bool:
-    """ユーザー名・パスワードでログインし、2FAを処理する。
+):
+    """ユーザー名・パスワードでログインし、2FAを処理する。成功時は CurrentUser を返す。
 
     input_fn が None を返した場合 (キャンセル) や 2FA 失敗時は LoginError を送出する。
     """
@@ -112,7 +112,8 @@ def _do_login(
     try:
         current_user = auth_api.get_current_user()
         print(f"ログイン成功: {current_user.display_name}")
-        return True
+        _drop_password(api_client)
+        return current_user
     except UnauthorizedException as e:
         if e.status != 200:
             print(f"認証エラー: {format_api_error(e)}")
@@ -160,7 +161,14 @@ def _do_login(
     except UnauthorizedException as e:
         raise LoginError(f"ログインに失敗しました {format_api_error(e)}") from e
     print(f"ログイン成功: {current_user.display_name}")
-    return True
+    _drop_password(api_client)
+    return current_user
+
+
+def _drop_password(api_client: vrchatapi.ApiClient) -> None:
+    """Cookie 取得後はパスワードを保持せず、Basic 認証ヘッダの再送を止める。"""
+    api_client.configuration.username = None
+    api_client.configuration.password = None
 
 
 def login(
@@ -169,10 +177,14 @@ def login(
     save_session: Optional[Callable[[str], None]] = None,
     load_session: Optional[Callable[[], Optional[str]]] = None,
     clear_session: Optional[Callable[[], None]] = None,
-) -> bool:
+):
     """
     セッションが保存済みならそれを再利用し、
     無効・未保存の場合はログインしてセッションを保存する。
+    成功時は CurrentUser、失敗時は None を返す。
+
+    load_session を渡さない場合 (明示ログイン) は、保存済みセッションを破棄してから
+    入力された認証情報でログインする。
     """
     cookie_jar: CookieJar = api_client.rest_client.cookie_jar
     auth_api = authentication_api.AuthenticationApi(api_client)
@@ -184,20 +196,27 @@ def login(
             try:
                 current_user = auth_api.get_current_user()
                 print(f"セッション再利用: {current_user.display_name}")
-                return True
+                _drop_password(api_client)
+                return current_user
             except (UnauthorizedException, ApiException):
                 print("保存済みセッションが無効です。再ログインします。")
                 if clear_session:
                     clear_session()
                 cookie_jar.clear()
+    else:
+        # 入力した認証情報と別アカウントの Cookie でログインしないよう破棄する
+        if clear_session:
+            clear_session()
+        cookie_jar.clear()
 
     # 新規ログイン
-    if not _do_login(api_client, input_fn=input_fn):
-        return False
+    current_user = _do_login(api_client, input_fn=input_fn)
+    if not current_user:
+        return None
 
     if save_session:
         save_session(_serialize_cookies(cookie_jar))
-    return True
+    return current_user
 
 
 # --- ApiClient ファクトリ ---
@@ -212,8 +231,6 @@ def create_api_client(
         configuration.username = username
     if password:
         configuration.password = password
-    configuration.client_side_validation = False
-    vrchatapi.Configuration.set_default(configuration)
     api_client = vrchatapi.ApiClient(configuration)
     api_client.user_agent = USER_AGENT
     return api_client
@@ -223,8 +240,8 @@ def try_session_login(
     api_client: vrchatapi.ApiClient,
     load_session: Optional[Callable[[], Optional[str]]] = None,
     clear_session: Optional[Callable[[], None]] = None,
-) -> Optional[str]:
-    """セッション再利用を試み、成功時に display_name を返す。失敗時は None。"""
+):
+    """セッション再利用を試み、成功時に CurrentUser を返す。失敗時は None。"""
     if not load_session:
         return None
     json_str = load_session()
@@ -236,7 +253,7 @@ def try_session_login(
     try:
         auth_api = authentication_api.AuthenticationApi(api_client)
         current_user = auth_api.get_current_user()
-        return current_user.display_name
+        return current_user
     except (UnauthorizedException, ApiException):
         if clear_session:
             clear_session()
@@ -245,8 +262,17 @@ def try_session_login(
 
 
 def logout(
+    api_client: Optional[vrchatapi.ApiClient] = None,
     clear_session: Optional[Callable[[], None]] = None,
 ) -> None:
-    """保存済みセッションを破棄する。"""
+    """サーバ側セッションを無効化し、保存済みセッションを破棄する。"""
+    if api_client is not None:
+        try:
+            authentication_api.AuthenticationApi(api_client).logout()
+        except ApiException:
+            pass
+        except Exception:
+            pass
+        api_client.rest_client.cookie_jar.clear()
     if clear_session:
         clear_session()

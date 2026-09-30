@@ -23,7 +23,7 @@ def _get_config_path() -> Path:
         config_dir = Path(appdata) / "VRCInviteTool"
     else:
         config_dir = Path.home() / ".vrcinvitetool"
-    config_dir.mkdir(parents=True, exist_ok=True)
+    config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     return config_dir / "config.json"
 
 
@@ -38,8 +38,13 @@ def _load_config() -> dict:
 
 
 def _save_config(data: dict):
+    """一時ファイルに書いてから置き換える (クラッシュ時の破損防止)。"""
     path = _get_config_path()
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    if os.name != "nt":
+        os.chmod(tmp_path, 0o600)
+    os.replace(tmp_path, path)
 
 
 class GUIOutput:
@@ -211,6 +216,7 @@ class AppState:
 
     def handle_session_expiry(self):
         from auth import logout
+        # セッション切れ時はサーバ側 logout は呼ばず、ローカルのみ破棄する
         logout(clear_session=self.clear_session)
         self.api_client = None
         self.display_name = ""

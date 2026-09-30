@@ -73,7 +73,7 @@ def show_main_view(state: AppState, instance_w: dict, invite_w: dict, log_w: dic
     )
 
     def on_logout_click(e):
-        logout(clear_session=state.clear_session)
+        logout(state.api_client, clear_session=state.clear_session)
         state.api_client = None
         state.display_name = ""
         if state._show_login_fn:
