@@ -3,9 +3,9 @@
 import threading
 
 import flet as ft
-from vrchatapi.exceptions import UnauthorizedException
+from vrchatapi.exceptions import ApiException
 
-from auth import create_api_client, login, try_session_login
+from auth import LoginError, create_api_client, format_api_error, login, try_session_login
 from .theme import COLOR_PRIMARY, COLOR_ACCENT, COLOR_PAGE_BG, _section_header, _styled_card, _title_banner
 from .state import AppState
 
@@ -133,6 +133,18 @@ def setup_login_handlers(state: AppState, widgets: dict, on_login_success):
                     w["login_button"].disabled = False
                     w["login_loading"].visible = False
                     state.page.update()
+            except LoginError as ex:
+                w["login_error_text"].value = str(ex)
+                w["login_error_text"].visible = True
+                w["login_button"].disabled = False
+                w["login_loading"].visible = False
+                state.page.update()
+            except ApiException as ex:
+                w["login_error_text"].value = f"エラー: {format_api_error(ex)}"
+                w["login_error_text"].visible = True
+                w["login_button"].disabled = False
+                w["login_loading"].visible = False
+                state.page.update()
             except Exception as ex:
                 w["login_error_text"].value = f"エラー: {ex}"
                 w["login_error_text"].visible = True

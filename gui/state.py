@@ -10,6 +10,9 @@ from pathlib import Path
 
 import flet as ft
 
+# 2FA ダイアログの応答待ちタイムアウト (秒)
+TWO_FACTOR_DIALOG_TIMEOUT_SEC = 300
+
 
 # --- ファイルベース設定ストレージ ---
 
@@ -159,9 +162,10 @@ class AppState:
 
     # --- 2FA ダイアログ ---
 
-    def two_factor_input_fn(self, prompt: str) -> str:
+    def two_factor_input_fn(self, prompt: str):
+        """2FA コード入力ダイアログを表示する。キャンセル/タイムアウト時は None を返す。"""
         from .theme import COLOR_PRIMARY, COLOR_ACCENT
-        result = {"value": ""}
+        result = {"value": None}
         evt = threading.Event()
         code_field = ft.TextField(
             label="2FAコード",
@@ -175,6 +179,11 @@ class AppState:
             self.page.close(dlg)
             evt.set()
 
+        def on_cancel(e):
+            result["value"] = None
+            self.page.close(dlg)
+            evt.set()
+
         code_field.on_submit = on_ok
 
         dlg = ft.AlertDialog(
@@ -184,12 +193,18 @@ class AppState:
                 controls=[ft.Text(prompt), code_field],
                 tight=True,
             ),
-            actions=[ft.TextButton("OK", on_click=on_ok)],
+            actions=[
+                ft.TextButton("キャンセル", on_click=on_cancel),
+                ft.TextButton("OK", on_click=on_ok),
+            ],
         )
 
         self.page.open(dlg)
         self.page.update()
-        evt.wait()
+        if not evt.wait(timeout=TWO_FACTOR_DIALOG_TIMEOUT_SEC):
+            self.page.close(dlg)
+            self.page.update()
+            return None
         return result["value"]
 
     # --- セッション切れ処理 ---

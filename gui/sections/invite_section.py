@@ -181,11 +181,13 @@ def setup_invite_handlers(state: AppState, widgets: dict):
                 user = api.get_user(user_id)
                 # state.log_queue.put(f"ユーザー名: {user.display_name}\n")
 
+                # vrchatapi 1.21 以降は icon_url、旧版は profile_pic_override 等
                 icon_url = (
-                    user.profile_pic_override
-                    or user.profile_pic_override_thumbnail
-                    or user.current_avatar_image_url
-                    or user.current_avatar_thumbnail_image_url
+                    getattr(user, "icon_url", None)
+                    or getattr(user, "profile_pic_override", None)
+                    or getattr(user, "profile_pic_override_thumbnail", None)
+                    or getattr(user, "current_avatar_image_url", None)
+                    or getattr(user, "current_avatar_thumbnail_image_url", None)
                 )
                 if icon_url:
                     try:

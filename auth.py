@@ -4,6 +4,7 @@ VRChat 認証の共通処理。
 """
 
 import json
+import re
 from http.cookiejar import CookieJar
 from typing import Optional, Callable
 
@@ -13,7 +14,31 @@ from vrchatapi.exceptions import UnauthorizedException, ApiException
 from vrchatapi.models.two_factor_auth_code import TwoFactorAuthCode
 from vrchatapi.models.two_factor_email_code import TwoFactorEmailCode
 
-USER_AGENT = "VRCInviteTool/0.1.0 (github.com/bikkyue/VRC-VRCInviteTool)"
+USER_AGENT = "VRCInviteTool/0.1.0 (github.com/Droplet-Collective/VRCInviteTool)"
+
+# 2FA コード: 6 桁の数字、またはリカバリーコード (xxxx-xxxx 形式)
+_TWO_FACTOR_CODE_RE = re.compile(r"^(\d{6}|[a-z0-9]{4}-[a-z0-9]{4})$", re.IGNORECASE)
+MAX_TWO_FACTOR_ATTEMPTS = 3
+
+
+class LoginError(Exception):
+    """ユーザーに表示可能な短いメッセージを持つログイン失敗例外。"""
+
+
+def format_api_error(e: ApiException) -> str:
+    """ApiException から HTTP ヘッダ/ボディの全文を含まない短い説明を作る。"""
+    message = None
+    try:
+        body = e.body
+        if isinstance(body, bytes):
+            body = body.decode("utf-8", errors="replace")
+        if body:
+            message = json.loads(body).get("error", {}).get("message")
+    except (ValueError, AttributeError, TypeError):
+        message = None
+    if message:
+        return f"({e.status}) {message}"
+    return f"({e.status}) {e.reason}"
 
 
 # --- セッション保存・読み込み (コールバック方式) ---
@@ -76,9 +101,12 @@ def _make_cookie(name, value, domain, path, expires):
 
 def _do_login(
     api_client: vrchatapi.ApiClient,
-    input_fn: Optional[Callable[[str], str]] = None,
+    input_fn: Optional[Callable[[str], Optional[str]]] = None,
 ) -> bool:
-    """ユーザー名・パスワードでログインし、2FAを処理する。"""
+    """ユーザー名・パスワードでログインし、2FAを処理する。
+
+    input_fn が None を返した場合 (キャンセル) や 2FA 失敗時は LoginError を送出する。
+    """
     _input = input_fn or input
     auth_api = authentication_api.AuthenticationApi(api_client)
     try:
@@ -86,28 +114,58 @@ def _do_login(
         print(f"ログイン成功: {current_user.display_name}")
         return True
     except UnauthorizedException as e:
-        if e.status == 200:
-            if "Email 2 Factor Authentication" in str(e.reason):
-                code = _input("メールに届いた2FAコードを入力してください: ").strip()
-                auth_api.verify2_fa_email_code(
+        if e.status != 200:
+            print(f"認証エラー: {format_api_error(e)}")
+            return False
+        is_email = "Email 2 Factor Authentication" in str(e.reason)
+
+    # 2FA が必要 (例外ハンドラの外で処理し、誤入力時は再入力させる)
+    prompt = (
+        "メールに届いた2FAコードを入力してください: "
+        if is_email
+        else "認証アプリの2FAコードを入力してください: "
+    )
+    for attempt in range(MAX_TWO_FACTOR_ATTEMPTS):
+        code = _input(prompt)
+        if code is None:
+            raise LoginError("ログインをキャンセルしました。")
+        code = code.strip()
+        if not _TWO_FACTOR_CODE_RE.match(code):
+            print("2FAコードの形式が正しくありません (6桁の数字)。")
+            prompt = "2FAコードの形式が正しくありません。もう一度入力してください: "
+            continue
+        try:
+            if is_email:
+                result = auth_api.verify2_fa_email_code(
                     two_factor_email_code=TwoFactorEmailCode(code=code)
                 )
             else:
-                code = _input("認証アプリの2FAコードを入力してください: ").strip()
-                auth_api.verify2_fa(
+                result = auth_api.verify2_fa(
                     two_factor_auth_code=TwoFactorAuthCode(code=code)
                 )
-            current_user = auth_api.get_current_user()
-            print(f"ログイン成功: {current_user.display_name}")
-            return True
-        else:
-            print(f"認証エラー: {e}")
-            return False
+            verified = bool(getattr(result, "verified", False))
+        except ApiException as e:
+            if e.status not in (400, 401):
+                raise LoginError(f"2FAコードの確認に失敗しました {format_api_error(e)}") from e
+            verified = False
+        if verified:
+            break
+        print("2FAコードが正しくありません。")
+        prompt = "2FAコードが正しくありません。もう一度入力してください: "
+    else:
+        raise LoginError("2FAコードの確認に失敗しました。ログインをやり直してください。")
+
+    try:
+        current_user = auth_api.get_current_user()
+    except UnauthorizedException as e:
+        raise LoginError(f"ログインに失敗しました {format_api_error(e)}") from e
+    print(f"ログイン成功: {current_user.display_name}")
+    return True
 
 
 def login(
     api_client: vrchatapi.ApiClient,
-    input_fn: Optional[Callable[[str], str]] = None,
+    input_fn: Optional[Callable[[str], Optional[str]]] = None,
     save_session: Optional[Callable[[str], None]] = None,
     load_session: Optional[Callable[[], Optional[str]]] = None,
     clear_session: Optional[Callable[[], None]] = None,
