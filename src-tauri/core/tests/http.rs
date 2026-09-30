@@ -336,6 +336,7 @@ async fn create_instance_and_invites() {
         .await;
     let n = c.invite_user(U, &location).await.unwrap();
     assert_eq!(n.id, "not_1");
+    assert_eq!(n.created_at.as_deref(), Some("2026-01-01T00:00:00.000Z"));
 
     // 自分への招待: パス中の instanceId はエンコードされる
     Mock::given(method("POST"))

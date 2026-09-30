@@ -83,7 +83,9 @@ export function createMainView(opts: MainViewOptions): MainView {
     try {
       img.src = await api.fetchImage(url);
       return true;
-    } catch {
+    } catch (e) {
+      // 401 ならバックエンドはセッションを破棄済みなのでログイン画面へ戻す。それ以外は画像無しで続行
+      if ((e as ApiError)?.kind === "unauthorized") handleError(e);
       return false;
     }
   }
@@ -99,7 +101,8 @@ export function createMainView(opts: MainViewOptions): MainView {
     try {
       await api.logout();
     } catch (e) {
-      handleError(e, "ログアウトエラー");
+      // 401 は handleError が onSessionExpired でログイン画面へ戻すので二重に遷移しない
+      if (handleError(e, "ログアウトエラー")) return;
     }
     opts.onLogout();
   });
@@ -476,7 +479,7 @@ export function createMainView(opts: MainViewOptions): MainView {
   const logPanel = el("pre", { class: "log", "aria-live": "polite" });
   const clearLogButton = el("button", { class: "btn text danger", type: "button" }, icon("delete", 18), el("span", { text: "クリア" }));
   clearLogButton.addEventListener("click", () => logStore.clear());
-  logStore.subscribe((lines) => {
+  const unsubscribeLog = logStore.subscribe((lines) => {
     logPanel.textContent = lines.join("\n");
     logPanel.scrollTop = logPanel.scrollHeight;
   });
@@ -506,10 +509,11 @@ export function createMainView(opts: MainViewOptions): MainView {
 
   const root = el("div", { class: "col" }, banner(headerRight), instanceCard, inviteCard, logCard);
 
-  // 画面を離れるときにダイアログを片付ける
+  // 画面を離れるときにダイアログとログ購読を片付ける (ログイン/ログアウトを繰り返してもリークしない)
   const observer = new MutationObserver(() => {
     if (!root.isConnected) {
       loadingDialog.remove();
+      unsubscribeLog();
       observer.disconnect();
     }
   });

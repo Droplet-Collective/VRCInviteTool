@@ -8,14 +8,26 @@ use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+/// 保持する日次ログファイルの上限 (古いものから削除される)。
+const MAX_LOG_FILES: usize = 14;
+
 /// ログを初期化する。返り値の guard はプロセス終了までドロップしないこと。
 pub fn init(log_dir: &Path) -> Option<WorkerGuard> {
     let filter =
         EnvFilter::try_from_env("VRCINVITETOOL_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
 
-    let file_layer = match std::fs::create_dir_all(log_dir) {
-        Ok(()) => {
-            let appender = tracing_appender::rolling::daily(log_dir, "vrcinvitetool.log");
+    let appender = std::fs::create_dir_all(log_dir)
+        .map_err(|e| e.to_string())
+        .and_then(|()| {
+            tracing_appender::rolling::Builder::new()
+                .rotation(tracing_appender::rolling::Rotation::DAILY)
+                .filename_prefix("vrcinvitetool.log")
+                .max_log_files(MAX_LOG_FILES)
+                .build(log_dir)
+                .map_err(|e| e.to_string())
+        });
+    let file_layer = match appender {
+        Ok(appender) => {
             let (writer, guard) = tracing_appender::non_blocking(appender);
             let layer = tracing_subscriber::fmt::layer()
                 .with_ansi(false)
@@ -25,10 +37,7 @@ pub fn init(log_dir: &Path) -> Option<WorkerGuard> {
             Some((layer, guard))
         }
         Err(e) => {
-            eprintln!(
-                "ログディレクトリを作成できません: {}: {e}",
-                log_dir.display()
-            );
+            eprintln!("ファイルログを初期化できません: {}: {e}", log_dir.display());
             None
         }
     };

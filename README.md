@@ -10,7 +10,7 @@ VRChat の API を使ってインスタンスの作成・フレンドへの招�
 ## 動作環境 / 前提条件
 
 - Windows 10 / 11 (64bit)
-- Microsoft Edge WebView2 ランタイム (Windows 11 には標準搭載。無い場合はインストーラが自動でダウンロードします)
+- Microsoft Edge WebView2 ランタイム (Windows 11 には標準搭載。無い場合はインストーラ版が自動でダウンロードします。ポータブル版 `.exe` は事前にインストールされている必要があります)
 - 要 VRChat アカウント
 
 ## インストール手順・実行方法
@@ -97,7 +97,7 @@ cd .. && npm run typecheck
 このツールは以下のオープンソースソフトウェアを使用しています (いずれも MIT / Apache-2.0 等の許諾ライセンス)。
 
 - [Tauri](https://tauri.app/) (MIT / Apache-2.0) — デスクトップアプリフレームワーク
-- [reqwest](https://github.com/seanmonstar/reqwest) (MIT / Apache-2.0)、[rustls](https://github.com/rustls/rustls) (Apache-2.0 / ISC / MIT) — HTTP / TLS
+- [reqwest](https://github.com/seanmonstar/reqwest) (MIT / Apache-2.0)、[native-tls](https://github.com/sfackler/rust-native-tls) (MIT / Apache-2.0) — HTTP / TLS (TLS は OS 標準の実装 = Windows では SChannel を使用)
 - [cookie_store](https://github.com/pfernie/cookie_store) / [reqwest_cookie_store](https://github.com/pfernie/reqwest_cookie_store) (MIT / Apache-2.0) — Cookie 管理
 - [serde](https://serde.rs/) (MIT / Apache-2.0)、[tokio](https://tokio.rs/) (MIT)、[tracing](https://github.com/tokio-rs/tracing) (MIT)、[regex](https://github.com/rust-lang/regex) (MIT / Apache-2.0)、[windows-sys](https://github.com/microsoft/windows-rs) (MIT / Apache-2.0) ほか
 - [Vite](https://vitejs.dev/) (MIT)、[TypeScript](https://www.typescriptlang.org/) (Apache-2.0)

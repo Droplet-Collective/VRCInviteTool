@@ -233,7 +233,8 @@ pub struct InviteRequest {
 #[serde(rename_all = "camelCase")]
 pub struct Notification {
     pub id: String,
-    #[serde(default)]
+    /// API は他のフィールドと異なり snake_case (`created_at`) で返す。
+    #[serde(default, alias = "created_at")]
     pub created_at: Option<String>,
     #[serde(default)]
     pub receiver_user_id: Option<String>,

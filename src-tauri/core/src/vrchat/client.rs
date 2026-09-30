@@ -240,7 +240,11 @@ impl VrcClient {
     /// `GET /auth/user` の 200 応答を解釈する。
     /// 2FA が必要な場合は `{"requiresTwoFactorAuth":["emailOtp"]}` のように返ってくる。
     pub fn parse_auth_response(body: serde_json::Value) -> Result<AuthResponse> {
-        if let Some(arr) = body.get("requiresTwoFactorAuth").and_then(|v| v.as_array()) {
+        if let Some(arr) = body
+            .get("requiresTwoFactorAuth")
+            .and_then(|v| v.as_array())
+            .filter(|arr| !arr.is_empty())
+        {
             let methods = arr
                 .iter()
                 .filter_map(|v| v.as_str().map(str::to_owned))
@@ -429,6 +433,12 @@ impl VrcClient {
             .map(|s| s.split(';').next().unwrap_or("").trim().to_string())
             .filter(|s| s.starts_with("image/"))
             .ok_or_else(|| Error::Decode("画像ではないレスポンスが返されました".into()))?;
+        if resp
+            .content_length()
+            .is_some_and(|len| len > MAX_IMAGE_BYTES as u64)
+        {
+            return Err(Error::Decode("画像が大きすぎます".into()));
+        }
         let bytes = resp.bytes().await?;
         if bytes.len() > MAX_IMAGE_BYTES {
             return Err(Error::Decode("画像が大きすぎます".into()));
@@ -516,6 +526,12 @@ mod tests {
             other => panic!("unexpected {other:?}"),
         }
         assert!(VrcClient::parse_auth_response(serde_json::json!({"nope": true})).is_err());
+        // 空の requiresTwoFactorAuth はログイン済みとして扱う
+        let r = VrcClient::parse_auth_response(serde_json::json!({
+            "id": "usr_1", "displayName": "Alice", "requiresTwoFactorAuth": []
+        }))
+        .unwrap();
+        assert!(matches!(r, AuthResponse::LoggedIn(_)));
     }
 
     #[test]
