@@ -1,36 +1,29 @@
-/* VRCInviteTool — テーマは CSS 変数で定義する。既定はライト、`:root[data-theme="dark"]` でダーク (src/theme.ts で切替)。 */
-@import "./assets/fonts/noto-sans-jp.css";
-
+/* VRCInviteTool — ライトテーマ (単一)。配色は CSS 変数で定義する。セクションは枠無しでページ背景に直接置く。 */
 :root {
   color-scheme: light;
-  --page-bg: #f4f5f7;
+  --page-bg: #eaf3fa;
   --card-bg: #ffffff;
-  --border: #e2e5ea;
-  --border-strong: #cfd4dc;
+  --border: #dbe4ee;
+  --border-strong: #c9d5e2;
   --text: #1f2429;
-  --text-dim: #667085;
-  --heading: #1f2429;
-  --accent: #2f6fdb;
-  --accent-hover: #285fbd;
-  --accent-soft: #eaf1fb;
+  --text-dim: #6b7280;
+  --heading: #374151;
+  --title: #6b7280;
+  --accent: #5b9bd5;
+  --accent-hover: #4a8ac4;
+  --accent-soft: #e6f0fa;
   --on-accent: #ffffff;
-  --icon-accent: var(--accent);
-  --invite-bg: var(--accent);
   --error: #c2352f;
   --warning: #9a6700;
   --info: var(--accent);
   --input-bg: #ffffff;
   --input-border: var(--border-strong);
-  --item-hover: #f1f4f8;
-  --chip-bg: #eef1f5;
-  --disabled-bg: #e8eaee;
-  --disabled-fg: #9aa1ab;
-  --log-bg: #fafbfc;
+  --item-hover: #f1f6fb;
+  --chip-bg: #eef3f8;
+  --disabled-bg: #c7d7e6;
+  --disabled-fg: #ffffff;
+  --log-bg: #f8fafc;
   --log-fg: #2b3138;
-  --banner-bg: #ffffff;
-  --banner-fg: var(--text);
-  --banner-title: var(--accent);
-  --banner-border: var(--border);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
   --dialog-shadow: 0 8px 24px rgba(16, 24, 40, 0.16);
   --backdrop: rgba(16, 24, 40, 0.35);
@@ -38,44 +31,7 @@
   --hover-overlay: rgba(16, 24, 40, 0.06);
   --radius: 8px;
   --radius-sm: 6px;
-}
-
-/* ダークテーマ (Python/Flet 版 gui/theme.py の配色を踏襲) */
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --page-bg: #121218;
-  --card-bg: #1e1e2e;
-  --border: #333344;
-  --border-strong: #44445a;
-  --text: #e8e8f0;
-  --text-dim: #9aa0b4;
-  --heading: #bbdefb;
-  --accent: #1e88e5;
-  --accent-hover: #1565c0;
-  --accent-soft: #1f2a44;
-  --on-accent: #ffffff;
-  --icon-accent: #26c6da;
-  --invite-bg: #ab47bc;
-  --error: #ef5350;
-  --warning: #ffc107;
-  --info: #26c6da;
-  --input-bg: #161622;
-  --input-border: #1e88e5;
-  --item-hover: #30304a;
-  --chip-bg: #333355;
-  --disabled-bg: #3a3a4a;
-  --disabled-fg: #666677;
-  --log-bg: #121218;
-  --log-fg: #b0bec5;
-  --banner-bg: linear-gradient(90deg, #1565c0, #1e88e5, #26c6da);
-  --banner-fg: #ffffff;
-  --banner-title: #ffffff;
-  --banner-border: transparent;
-  --shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-  --dialog-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --backdrop: rgba(0, 0, 0, 0.55);
-  --spinner-track: rgba(255, 255, 255, 0.2);
-  --hover-overlay: rgba(255, 255, 255, 0.08);
+  --pill: 9999px;
 }
 
 * {
@@ -88,7 +44,7 @@ body {
   padding: 0;
   background: var(--page-bg);
   color: var(--text);
-  font-family: "Noto Sans JP", "Noto Sans", sans-serif;
+  font-family: "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
   font-size: 14px;
   line-height: 1.5;
 }
@@ -113,18 +69,14 @@ textarea {
   display: none !important;
 }
 
-/* --- バナー --- */
+/* --- ヘッダー (枠無し。ページ背景の上に直接置く) --- */
 .banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px;
-  border-radius: var(--radius);
-  background: var(--banner-bg);
-  border: 1px solid var(--banner-border);
-  color: var(--banner-fg);
-  box-shadow: var(--shadow);
+  padding: 6px 4px;
+  color: var(--text);
   margin-bottom: 4px;
 }
 .banner-title {
@@ -133,47 +85,19 @@ textarea {
   gap: 10px;
   font-size: 22px;
   font-weight: 700;
-  color: var(--banner-title);
-}
-.banner-title .icon {
-  color: var(--banner-title);
+  color: var(--title);
 }
 .banner-right {
   display: flex;
   align-items: center;
   gap: 4px;
   font-size: 13px;
+  color: var(--text-dim);
 }
 
-/* テーマ切替 (タイトル右) */
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-left: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  background: transparent;
-  color: var(--banner-fg);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-:root[data-theme="dark"] .theme-toggle {
-  border-color: rgba(255, 255, 255, 0.5);
-}
-.theme-toggle:hover {
-  background: var(--hover-overlay);
-}
-
-/* --- カード --- */
+/* --- セクション (枠・背景・影は付けず、余白と見出しだけで区切る) --- */
 .card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  box-shadow: var(--shadow);
+  padding: 8px 4px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -194,7 +118,7 @@ textarea {
   color: var(--heading);
 }
 .section-title .icon {
-  color: var(--icon-accent);
+  color: var(--accent);
 }
 
 .row {
@@ -313,7 +237,7 @@ textarea {
   color: var(--text);
 }
 
-/* --- ボタン --- */
+/* --- ボタン (Tailwind の rounded-full 相当のピル型で統一) --- */
 button {
   font-size: 14px;
   cursor: pointer;
@@ -321,14 +245,16 @@ button {
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  height: 2.25rem;
+  padding: 0 1rem;
+  border-radius: var(--pill);
   border: 1px solid transparent;
   color: var(--on-accent);
   background: var(--accent);
   font-weight: 600;
-  transition: background-color 0.12s, filter 0.12s;
+  transition: background-color 0.12s, color 0.12s;
 }
 .btn:hover:not(:disabled) {
   background: var(--accent-hover);
@@ -338,13 +264,6 @@ button {
   color: var(--disabled-fg);
   border-color: transparent;
   cursor: not-allowed;
-}
-.btn.invite {
-  background: var(--invite-bg);
-}
-.btn.invite:hover:not(:disabled) {
-  background: var(--invite-bg);
-  filter: brightness(0.92);
 }
 /* 自分への招待は副次的な操作なのでアウトライン表示 */
 .btn.self-invite {
@@ -357,17 +276,13 @@ button {
 }
 .btn.self-invite:disabled {
   background: transparent;
-  color: var(--disabled-fg);
-  border-color: var(--border);
-}
-:root[data-theme="dark"] .btn.self-invite {
-  color: #4dd0e1;
-  border-color: #0097a7;
+  color: var(--disabled-bg);
+  border-color: var(--disabled-bg);
 }
 .btn.text {
   background: transparent;
-  color: var(--banner-fg);
-  padding: 6px 10px;
+  color: var(--text-dim);
+  padding: 0 0.75rem;
   border-color: transparent;
 }
 .btn.text:hover:not(:disabled) {
@@ -378,23 +293,24 @@ button {
 }
 .btn.text:disabled {
   background: transparent;
+  color: var(--disabled-bg);
 }
 .icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--pill);
   border: none;
   background: transparent;
-  color: var(--icon-accent);
+  color: var(--accent);
 }
 .icon-btn:hover {
   background: var(--hover-overlay);
 }
 .icon-btn.white {
-  color: var(--banner-fg);
+  color: var(--text-dim);
 }
 
 /* --- テキスト --- */
@@ -468,7 +384,7 @@ button {
   gap: 4px;
   background: var(--chip-bg);
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--pill);
   padding: 3px 6px 3px 10px;
   font-size: 12px;
 }
@@ -493,7 +409,8 @@ button {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--log-fg);
-  font-size: 12.5px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
   height: 220px;
   overflow: auto;
   padding: 8px 10px;
@@ -543,9 +460,6 @@ dialog .actions {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
-}
-dialog .btn.text {
-  color: var(--text-dim);
 }
 dialog.loading {
   display: flex;

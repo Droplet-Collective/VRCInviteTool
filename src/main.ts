@@ -2,14 +2,12 @@
 import { listen } from "@tauri-apps/api/event";
 import { api, type ApiError, type UserSummary } from "./api";
 import { logStore } from "./log";
-import { initTheme } from "./theme";
 import { createLoginView } from "./views/login";
 import { createMainView } from "./views/main";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("#app not found");
 const app: HTMLElement = root;
-initTheme();
 
 let savedUsername = "";
 

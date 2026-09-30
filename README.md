@@ -28,7 +28,6 @@ VRChat の API を使ってインスタンスの作成・フレンドへの招�
 - 指定したインスタンスへフレンドを招待
   - 複数人 (最大 20 人)・自分自身にもインバイトを送信可能
 - ログイン状態の保存 (次回起動時に自動ログイン)、二段階認証 (メール / 認証アプリ / リカバリーコード) 対応
-- ライト / ダークテーマ (ヘッダーのタイトル右のボタンで切替。既定はライト)
 
 ## スクリーンショット
 
@@ -102,7 +101,6 @@ cd .. && npm run typecheck
 - [cookie_store](https://github.com/pfernie/cookie_store) / [reqwest_cookie_store](https://github.com/pfernie/reqwest_cookie_store) (MIT / Apache-2.0) — Cookie 管理
 - [serde](https://serde.rs/) (MIT / Apache-2.0)、[tokio](https://tokio.rs/) (MIT)、[tracing](https://github.com/tokio-rs/tracing) (MIT)、[regex](https://github.com/rust-lang/regex) (MIT / Apache-2.0)、[windows-sys](https://github.com/microsoft/windows-rs) (MIT / Apache-2.0) ほか
 - [Vite](https://vitejs.dev/) (MIT)、[TypeScript](https://www.typescriptlang.org/) (Apache-2.0)
-- [Noto Sans JP](https://fonts.google.com/noto/specimen/Noto+Sans+JP) (SIL Open Font License 1.1) — UI フォント。`src/assets/fonts/` に同梱 ([@fontsource-variable/noto-sans-jp](https://fontsource.org/fonts/noto-sans-jp) 由来、ライセンスは同ディレクトリの `LICENSE-OFL.txt`)
 - アイコンは [Material Icons](https://fonts.google.com/icons) (Apache-2.0) のパスデータを使用
 - API の仕様は [VRChat API Documentation](https://vrchatapi.github.io/) (コミュニティによる非公式ドキュメント) を参考にしています
 

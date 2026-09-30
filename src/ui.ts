@@ -1,5 +1,4 @@
 // 小さな DOM ヘルパーとアイコン。フレームワークは使わない。
-import { currentTheme, type Theme, toggleTheme } from "./theme";
 
 type Child = Node | string | null | undefined | false;
 
@@ -39,8 +38,6 @@ export function setText(node: HTMLElement, text: string): void {
 
 /** Material Icons のパス (一部)。 */
 const ICON_PATHS: Record<string, string> = {
-  rocket:
-    "M9.19 6.35c-2.04 2.29-3.44 5.58-3.57 5.89L2 10.69l4.05-4.05c.47-.47 1.15-.68 1.81-.55l1.33.26zM11.17 17s3.74-1.55 5.89-3.7c5.4-5.4 4.5-9.62 4.21-10.57-.95-.3-5.17-1.19-10.57 4.21C8.55 9.09 7 12.83 7 12.83L11.17 17zm6.48-2.19c-2.29 2.04-5.58 3.44-5.89 3.57L13.31 22l4.05-4.05c.47-.47.68-1.15.55-1.81l-.26-1.33zM9 18c0 .83-.34 1.58-.88 2.12C6.94 21.3 2 22 2 22s.7-4.94 1.88-6.12A2.996 2.996 0 0 1 9 18zm4-9c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2z",
   lock: "M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z",
   login:
     "M11 7L9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5-5-5zm9 12h-8v2h8c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-8v2h8v14z",
@@ -66,10 +63,6 @@ const ICON_PATHS: Record<string, string> = {
   close: "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
   visibility:
     "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z",
-  darkMode:
-    "M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-2.98 0-5.4-2.42-5.4-5.4 0-1.81.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z",
-  lightMode:
-    "M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37c-.39-.39-1.03-.39-1.41 0-.39.39-.39 1.03 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0 .39-.39.39-1.03 0-1.41l-1.06-1.06zm1.06-10.96c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36c.39-.39.39-1.03 0-1.41-.39-.39-1.03-.39-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z",
 };
 
 export function icon(name: keyof typeof ICON_PATHS | string, size = 20): SVGSVGElement {
@@ -103,22 +96,8 @@ export function spinner(size = 20): HTMLElement {
   return s;
 }
 
-/** テーマ切替ボタン。表示は「切り替え先」のテーマ名 (ライト表示中は「ダーク」)。 */
-export function themeToggleButton(): HTMLButtonElement {
-  const label = el("span", { class: "row", style: "gap:5px" });
-  const btn = el("button", { class: "theme-toggle", type: "button", onClick: () => render(toggleTheme()) }, label) as HTMLButtonElement;
-  function render(theme: Theme): void {
-    const next: Theme = theme === "light" ? "dark" : "light";
-    label.replaceChildren(icon(next === "dark" ? "darkMode" : "lightMode", 15), el("span", { text: next === "dark" ? "ダーク" : "ライト" }));
-    btn.title = next === "dark" ? "ダークテーマに切り替え" : "ライトテーマに切り替え";
-    btn.setAttribute("aria-label", btn.title);
-  }
-  render(currentTheme());
-  return btn;
-}
-
 export function banner(right?: HTMLElement): HTMLElement {
-  const b = el("header", { class: "banner" }, el("div", { class: "banner-title" }, icon("rocket", 26), el("span", { text: "VRCInviteTool" }), themeToggleButton()));
+  const b = el("header", { class: "banner" }, el("div", { class: "banner-title" }, el("span", { text: "VRCInviteTool" })));
   if (right) b.append(right);
   return b;
 }
