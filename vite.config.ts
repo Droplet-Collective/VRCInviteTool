@@ -17,5 +17,7 @@ export default defineConfig({
     sourcemap: !!process.env.TAURI_ENV_DEBUG,
     outDir: "dist",
     emptyOutDir: true,
+    // フォント等を data: URL にインライン化しない (CSP は 'self' からの読み込みのみ許可)
+    assetsInlineLimit: 0,
   },
 });

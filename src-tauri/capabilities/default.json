@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "メインウィンドウに必要な最小権限 (コア + クリップボード書き込み)",
+  "description": "メインウィンドウに必要な最小権限 (コア + クリップボード書き込み + テーマ切替に伴うウィンドウ配色の変更)",
   "windows": ["main"],
-  "permissions": ["core:default", "clipboard-manager:allow-write-text"]
+  "permissions": ["core:default", "clipboard-manager:allow-write-text", "core:window:allow-set-theme"]
 }
