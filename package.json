@@ -1,7 +1,7 @@
 {
   "name": "vrcinvitetool",
   "private": true,
-  "version": "0.2.0",
+  "version": "1.1.0",
   "description": "VRChat のインスタンス作成・フレンド招待ツール (Tauri + Rust)。バージョンの正は src-tauri/Cargo.toml。",
   "type": "module",
   "scripts": {
